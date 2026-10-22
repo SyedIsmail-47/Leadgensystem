@@ -23,6 +23,8 @@ def _add_signal(
         """
         INSERT INTO lead_signals (lead_id, channel, signal, value, verified)
         VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (lead_id, channel, signal) DO UPDATE
+          SET value = EXCLUDED.value, verified = EXCLUDED.verified, observed_at = now()
         """,
         (lead_id, channel, signal, value, verified),
     )
@@ -53,8 +55,14 @@ def enrich_lead(lead: dict[str, Any]) -> bool:
     data = crawl_website(website)
     if data.get("error") and data["pages_fetched"] == 0:
         execute(
-            "UPDATE leads SET stage = CASE WHEN stage = 'new' THEN 'enriched' ELSE stage END, updated_at = now() WHERE id = %s",
-            (lead_id,),
+            """
+            UPDATE leads SET
+              enrich_error = %s,
+              stage = CASE WHEN stage = 'new' THEN 'enriched' ELSE stage END,
+              updated_at = now()
+            WHERE id = %s
+            """,
+            (str(data["error"])[:500], lead_id),
         )
         return useful
 

@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from typing import Any
 
-from common.config import get_settings
 from common.db import execute, fetchone
 from common.logging import get_logger
 from outreach.unsubscribe import is_suppressed
@@ -85,6 +84,9 @@ def send_step(step_id: int) -> bool:
         return False
     if step["status"] != "approved":
         log.info("skip step %s not approved", step_id)
+        return False
+    if step.get("scheduled_for") and step["scheduled_for"] > datetime.now(timezone.utc):
+        log.info("skip step %s not scheduled yet", step_id)
         return False
 
     lead = fetchone("SELECT * FROM leads WHERE id = %s", (step["lead_id"],))

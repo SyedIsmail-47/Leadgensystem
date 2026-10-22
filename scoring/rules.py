@@ -55,7 +55,7 @@ def evaluate_rules(
     reviews = lead.get("review_count") or 0
     add("reviews_ge_20", int(reviews) >= 20, f"reviews={reviews}")
 
-    loc_ok = True
+    loc_ok = False
     if location:
         loc_l = location.lower()
         hay = " ".join(

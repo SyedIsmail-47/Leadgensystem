@@ -1,12 +1,12 @@
--- Leadgensystem schema (multi-user ready)
+-- Leadgensystem schema (multi-user ready, idempotent)
 
-CREATE TABLE workspaces (
+CREATE TABLE IF NOT EXISTS workspaces (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   email TEXT NOT NULL UNIQUE,
@@ -15,14 +15,14 @@ CREATE TABLE users (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE settings (
+CREATE TABLE IF NOT EXISTS settings (
   workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   key TEXT NOT NULL,
   value JSONB NOT NULL DEFAULT '{}',
   PRIMARY KEY (workspace_id, key)
 );
 
-CREATE TABLE offer_profiles (
+CREATE TABLE IF NOT EXISTS offer_profiles (
   id SERIAL PRIMARY KEY,
   workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -33,7 +33,7 @@ CREATE TABLE offer_profiles (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE sender_profiles (
+CREATE TABLE IF NOT EXISTS sender_profiles (
   id SERIAL PRIMARY KEY,
   workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   sender_name TEXT NOT NULL,
@@ -54,7 +54,7 @@ CREATE TABLE sender_profiles (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE scoring_profiles (
+CREATE TABLE IF NOT EXISTS scoring_profiles (
   id SERIAL PRIMARY KEY,
   workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -62,7 +62,7 @@ CREATE TABLE scoring_profiles (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE campaigns (
+CREATE TABLE IF NOT EXISTS campaigns (
   id SERIAL PRIMARY KEY,
   workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -79,13 +79,13 @@ CREATE TABLE campaigns (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE campaign_niches (
+CREATE TABLE IF NOT EXISTS campaign_niches (
   id SERIAL PRIMARY KEY,
   campaign_id INT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
   niche TEXT NOT NULL
 );
 
-CREATE TABLE campaign_locations (
+CREATE TABLE IF NOT EXISTS campaign_locations (
   id SERIAL PRIMARY KEY,
   campaign_id INT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
   country TEXT,
@@ -94,7 +94,7 @@ CREATE TABLE campaign_locations (
   radius_km NUMERIC(8,2)
 );
 
-CREATE TABLE campaign_presets (
+CREATE TABLE IF NOT EXISTS campaign_presets (
   id SERIAL PRIMARY KEY,
   workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   kind TEXT NOT NULL,
@@ -103,7 +103,7 @@ CREATE TABLE campaign_presets (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE leads (
+CREATE TABLE IF NOT EXISTS leads (
   id SERIAL PRIMARY KEY,
   workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   campaign_id INT REFERENCES campaigns(id) ON DELETE CASCADE,
@@ -128,22 +128,24 @@ CREATE TABLE leads (
   source TEXT DEFAULT 'gmaps',
   dedupe_key TEXT,
   notes TEXT,
+  enrich_error TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (workspace_id, dedupe_key)
 );
 
-CREATE TABLE lead_signals (
+CREATE TABLE IF NOT EXISTS lead_signals (
   id SERIAL PRIMARY KEY,
   lead_id INT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
   channel TEXT NOT NULL,
   signal TEXT NOT NULL,
   value TEXT,
   verified BOOLEAN DEFAULT false,
-  observed_at TIMESTAMPTZ DEFAULT now()
+  observed_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (lead_id, channel, signal)
 );
 
-CREATE TABLE lead_scores (
+CREATE TABLE IF NOT EXISTS lead_scores (
   id SERIAL PRIMARY KEY,
   lead_id INT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
   rule TEXT NOT NULL,
@@ -152,7 +154,7 @@ CREATE TABLE lead_scores (
   scored_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE outreach_steps (
+CREATE TABLE IF NOT EXISTS outreach_steps (
   id SERIAL PRIMARY KEY,
   workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   lead_id INT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
@@ -166,7 +168,7 @@ CREATE TABLE outreach_steps (
   error TEXT
 );
 
-CREATE TABLE suppression (
+CREATE TABLE IF NOT EXISTS suppression (
   workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   reason TEXT,
@@ -174,7 +176,7 @@ CREATE TABLE suppression (
   PRIMARY KEY (workspace_id, email)
 );
 
-CREATE TABLE runs (
+CREATE TABLE IF NOT EXISTS runs (
   id SERIAL PRIMARY KEY,
   workspace_id INT REFERENCES workspaces(id) ON DELETE CASCADE,
   job TEXT NOT NULL,
@@ -187,21 +189,22 @@ CREATE TABLE runs (
   finished_at TIMESTAMPTZ
 );
 
-CREATE INDEX ON leads (workspace_id, campaign_id, tier, stage);
-CREATE INDEX ON lead_signals (lead_id);
-CREATE INDEX ON lead_scores (lead_id);
-CREATE INDEX ON outreach_steps (workspace_id, status, scheduled_for);
-CREATE INDEX ON runs (workspace_id, started_at DESC);
-CREATE INDEX ON campaign_niches (campaign_id);
-CREATE INDEX ON campaign_locations (campaign_id);
+CREATE INDEX IF NOT EXISTS leads_workspace_campaign_tier_stage_idx
+  ON leads (workspace_id, campaign_id, tier, stage);
+CREATE INDEX IF NOT EXISTS lead_signals_lead_id_idx ON lead_signals (lead_id);
+CREATE INDEX IF NOT EXISTS lead_scores_lead_id_idx ON lead_scores (lead_id);
+CREATE INDEX IF NOT EXISTS outreach_steps_ws_status_sched_idx
+  ON outreach_steps (workspace_id, status, scheduled_for);
+CREATE INDEX IF NOT EXISTS runs_workspace_started_idx ON runs (workspace_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS campaign_niches_campaign_id_idx ON campaign_niches (campaign_id);
+CREATE INDEX IF NOT EXISTS campaign_locations_campaign_id_idx ON campaign_locations (campaign_id);
 
--- Seed workspace + default scoring + example offer (admin user seeded by entrypoint)
-INSERT INTO workspaces (id, name) VALUES (1, 'default');
-SELECT setval('workspaces_id_seq', 1);
+INSERT INTO workspaces (id, name) VALUES (1, 'default')
+ON CONFLICT (id) DO NOTHING;
+SELECT setval('workspaces_id_seq', GREATEST((SELECT MAX(id) FROM workspaces), 1));
 
-INSERT INTO scoring_profiles (workspace_id, name, weights) VALUES (
-  1,
-  'Default SPEC',
+INSERT INTO scoring_profiles (workspace_id, name, weights)
+SELECT 1, 'Default SPEC',
   '{
     "has_website": 8,
     "category_match": 8,
@@ -217,10 +220,12 @@ INSERT INTO scoring_profiles (workspace_id, name, weights) VALUES (
     "whatsapp_link": 5,
     "active_social": 5
   }'::jsonb
+WHERE NOT EXISTS (
+  SELECT 1 FROM scoring_profiles WHERE workspace_id = 1 AND name = 'Default SPEC'
 );
 
-INSERT INTO offer_profiles (workspace_id, name, pitch, pain_points, gap_hook_rules, templates) VALUES (
-  1,
+INSERT INTO offer_profiles (workspace_id, name, pitch, pain_points, gap_hook_rules, templates)
+SELECT 1,
   'Website redesign + Meta ads',
   'We redesign local business websites and run Meta ads that convert.',
   ARRAY['outdated website', 'no booking', 'ads without tracking'],
@@ -244,4 +249,6 @@ INSERT INTO offer_profiles (workspace_id, name, pitch, pain_points, gap_hook_rul
       "body": "Hi {{name}},\n\nClosing the loop — if now is not the time, no worries. If it is, I can send a one-page plan for {{name}}.\n\nBest,\n{{sender_name}}"
     }
   }'::jsonb
+WHERE NOT EXISTS (
+  SELECT 1 FROM offer_profiles WHERE workspace_id = 1 AND name = 'Website redesign + Meta ads'
 );

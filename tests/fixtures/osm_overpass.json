@@ -1,0 +1,24 @@
+{
+  "elements": [
+    {
+      "type": "node",
+      "id": 1,
+      "tags": {
+        "name": "OSM Dental",
+        "amenity": "dentist",
+        "phone": "+92 300 9998877",
+        "website": "https://osm-dental.example",
+        "addr:city": "Lahore"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2,
+      "tags": {
+        "name": "OSM Clinic",
+        "phone": "+923008887766",
+        "addr:city": "Lahore"
+      }
+    }
+  ]
+}
