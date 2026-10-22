@@ -31,9 +31,13 @@ def inject_css() -> None:
 
 
 def require_login() -> dict:
+    from dashboard.auth_ui import render_login
+
+    if "user" not in st.session_state:
+        st.session_state["user"] = None
     user = st.session_state.get("user")
     if not user:
-        st.warning("Please log in from the home page.")
+        render_login()
         st.stop()
     return user
 

@@ -52,11 +52,19 @@ def _parse_reviews(text: str | None) -> int | None:
 
 
 def _extract_place(page: Any) -> LeadDraft | None:
+    name = None
     try:
-        name_el = page.locator(SELECTORS["name"]).first
-        name = name_el.inner_text(timeout=5000).strip()
+        # Prefer place title heading; skip feed chrome like "Results"
+        for sel in ('div[role="main"] h1', SELECTORS["name"]):
+            loc = page.locator(sel).first
+            if loc.count() == 0:
+                continue
+            text = loc.inner_text(timeout=5000).strip()
+            if text and text.lower() not in {"results", "result", "overview"}:
+                name = text
+                break
     except Exception:
-        return None
+        name = None
     if not name:
         return None
 
