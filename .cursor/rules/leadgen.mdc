@@ -1,0 +1,41 @@
+---
+description: Leadgensystem project rules. Always apply.
+alwaysApply: true
+---
+
+# Leadgensystem rules
+
+## Source of truth
+- `SPEC.md` defines architecture, schema, scoring and milestones. `DESIGN.md` defines the dashboard.
+- Do not change the fixed stack or schema without writing the reason in `DECISIONS.md`.
+
+## Workflow
+- Work one milestone at a time (M1 → M7). Verify the acceptance check, then commit: `M<n>: <summary>`.
+- Prefer small, targeted edits. Do not rewrite or reformat files you are not changing.
+- Do not ask questions during execution; choose a sensible default and log it in `DECISIONS.md`.
+- If blocked twice on the same problem, use the fallback from `PLAN.md` and move on.
+
+## Code standards
+- Python 3.12, type hints on public functions, `ruff`-clean, no unused code.
+- All config via `common/config.py` reading env vars. No hardcoded secrets, URLs, or credentials.
+- All DB access through `common/db.py` using parameterized queries (never string-format SQL).
+- Scrapers: selectors in one dict per file, random delays, timeouts on every network call,
+  fail soft and log; never crash the worker.
+- Every scheduled job writes a `runs` row and catches all exceptions.
+- Idempotent operations: reruns must not create duplicates (use `dedupe_key`, upserts, delete-then-insert for scores).
+- Log with the standard `logging` module, structured, one logger per module.
+
+## Testing
+- Unit tests (pytest) for: scoring rules, validators, dedupe key, email extraction.
+- Scrapers get a manual CLI check, not mocked unit tests (time budget).
+
+## Compliance guardrails (non-negotiable)
+- Every outbound email includes sender identity, physical address and an unsubscribe link.
+- Always check the `suppression` table before sending.
+- Outbound sending is rate limited and requires manual approval in the dashboard.
+- Sending disabled until sender profile has physical address + passing SMTP test.
+- No scraping behind logins. No bulk WhatsApp automation; only click-to-chat links.
+
+## Token discipline
+- Read only the files needed for the current task. Do not re-print large files in chat.
+- Keep chat replies short: done / verified / next.
