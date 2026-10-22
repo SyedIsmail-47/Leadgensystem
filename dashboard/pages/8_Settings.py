@@ -151,8 +151,12 @@ with tab_sender:
                     msg.set_content(
                         f"SMTP test from Leadgensystem.\n\n{row.get('sender_name')}\n{row.get('physical_address') or ''}"
                     )
-                    with smtplib.SMTP(row["smtp_host"], int(row["smtp_port"] or 587), timeout=20) as server:
-                        server.starttls()
+                    port = int(row["smtp_port"] or 587)
+                    with smtplib.SMTP(row["smtp_host"], port, timeout=20) as server:
+                        server.ehlo()
+                        if server.has_extn("starttls") and port not in (25, 1025):
+                            server.starttls()
+                            server.ehlo()
                         if row.get("smtp_user"):
                             server.login(row["smtp_user"], row.get("smtp_pass_enc") or "")
                         server.send_message(msg)

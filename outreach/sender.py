@@ -66,8 +66,14 @@ def send_email(
     if sender.get("reply_to"):
         msg["Reply-To"] = sender["reply_to"]
     msg.set_content(body)
-    with smtplib.SMTP(sender["smtp_host"], int(sender.get("smtp_port") or 587), timeout=30) as server:
-        server.starttls()
+    port = int(sender.get("smtp_port") or 587)
+    host = sender.get("smtp_host") or "localhost"
+    with smtplib.SMTP(host, port, timeout=30) as server:
+        server.ehlo()
+        # Plain SMTP (e.g. local dummy :1025) has no STARTTLS — skip when unsupported.
+        if server.has_extn("starttls") and port not in (25, 1025):
+            server.starttls()
+            server.ehlo()
         if sender.get("smtp_user"):
             server.login(sender["smtp_user"], sender.get("smtp_pass_enc") or "")
         server.send_message(msg)
@@ -144,7 +150,9 @@ def send_step(step_id: int) -> bool:
             """,
             (lead["id"],),
         )
-        time.sleep(random.uniform(60, 120))
+        # Rate limit; skip long delay for local dummy SMTP self-tests.
+        if (sender.get("smtp_host") or "") not in ("127.0.0.1", "localhost"):
+            time.sleep(random.uniform(60, 120))
         return True
     except Exception as exc:
         log.exception("send failed")

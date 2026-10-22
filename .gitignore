@@ -8,3 +8,4 @@ venv/
 *.log
 .playwright/
 .DS_Store
+tmp_mail/
