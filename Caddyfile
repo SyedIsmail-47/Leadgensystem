@@ -1,3 +1,8 @@
 {$DOMAIN:localhost} {
-	reverse_proxy dashboard:8501
+	handle /unsubscribe* {
+		reverse_proxy unsub:8080
+	}
+	handle {
+		reverse_proxy dashboard:8501
+	}
 }

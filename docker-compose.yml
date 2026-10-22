@@ -45,6 +45,20 @@ services:
       - "8501:8501"
     restart: unless-stopped
 
+  unsub:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://leadgensystem:change_me@db:5432/leadgensystem}
+      PYTHONPATH: /app
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn outreach.unsubscribe:create_app --factory --host 0.0.0.0 --port 8080
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
   caddy:
     image: caddy:2-alpine
     ports:
@@ -56,8 +70,10 @@ services:
       - caddy_config:/config
     depends_on:
       - dashboard
+      - unsub
     profiles:
       - prod
+
 
 volumes:
   pgdata:
